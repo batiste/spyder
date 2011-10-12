@@ -144,6 +144,6 @@ class Scraper(object):
    
 # example
 #def __main__():
-sp = Scraper("http://d8.opera.com:8001/", exclude=["/dont/want/"])
+sp = Scraper("http://www.microsoft.com", exclude=["/dont/not/want/"])
 print sp.scrap()
 
