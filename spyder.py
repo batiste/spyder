@@ -5,8 +5,17 @@ import urlparse
 import urllib2
 import httplib
 import socket
-import logging
 import pdb
+from termcolor import colored
+import os
+
+def ensure_dir(path):
+    if not os.path.exists(path):
+        try:
+            os.makedirs(path)
+        except OSError:
+            print path
+            raise
 
 def walk(node):
     yield node
@@ -21,7 +30,7 @@ def node_is(node, name):
 
 class Scraper(object):
 
-    def __init__(self, uri, exclude=[]):
+    def __init__(self, uri, exclude=[], data_directory='data'):
         self.uri = uri
         self.domain = urlparse.urlparse(uri)[1]
         self.http_root = "http://%s" % self.domain
@@ -29,6 +38,7 @@ class Scraper(object):
         self.visited_urls = []
         self.urls_to_visit = []
         self.html_urls = []
+        self.data_directory = data_directory
         self.exclude = exclude
 
     def get_absolute_url(self, current_url, node):
@@ -84,19 +94,24 @@ class Scraper(object):
         if parse.query:
             return url + '?' + parse.query
         return url
+
+    def error(self, msg):
+        print(colored(msg, 'red'))
+
+    def message(self, msg):
+        print(colored(msg))
             
     def fetch(self, url):
         total = self.http_root + url
         if not url.startswith('/'):
-            logging.warn("Invalid URL %s on ?" % total)
+            self.error("Invalid URL %s on ?" % total)
         try:
-            fh = urllib2.urlopen(total, None, 3)
+            fh = urllib2.urlopen(total, None, 5)
             content_type = fh.info()['content-type']
             content = fh.read()
 
         except (urllib2.URLError, httplib.HTTPException, socket.timeout), err:
-            logging.warn("Cannot fetch url:%s %s" % (total, err))
-            return "error", ""
+            raise IOError(err)
 
         return content_type, content
 
@@ -112,10 +127,10 @@ class Scraper(object):
         if url in self.urls_to_visit:
             self.urls_to_visit.remove(url)
         try:
-            logging.info("Fetching url:%s" % url)
+            print("Fetching url: %s" % url)
             content_type, content = self.fetch(url)
-        except (urllib2.HTTPError), err:
-            logging.warn("Cannot fetch url:%s %s" % (self.http_root + '/' + url, err))
+        except IOError as error:
+            print(colored("Cannot fetch url: %s\nReasons: %s" % (url, error), 'red'))
             return
 
         if content_type.startswith("text/html"):
@@ -136,26 +151,42 @@ class Scraper(object):
                     href = self.cleanup_href(href)
                     if href not in self.all_urls:
                         self.all_urls.append(href)
-                        if query:
-                            print query
+                        #if query:
+                        #    print('Query string', query)
                         self.urls_to_visit.append(href)
 
     def scrap(self, start='/'):
+        print(colored('Start scrapping domain '+self.domain, 'green'))
         result = self.scrap_page(start)
         while len(self.urls_to_visit):
-            for url in self.urls_to_visit:
-                self.scrap_page(url)
-        return self.visited_urls
+            url = self.urls_to_visit.pop()
+            self.scrap_page(url)
+        print(colored('Finished', 'green'))
 
 
     def new_page(self, url, content):
-        print url
-    
+        path = [self.data_directory] + url.split('/')
+        filepath = os.path.join(*path)
+        if not filepath.endswith('/'):
+            filepath += '/'
+        ensure_dir(filepath)
+        filepath += 'index.html'
+        f = open(filepath, 'w')
+        f.write(content)
+        f.close()
+
     def new_content(self, url, content_type, content):
-        print url, content_type
+        path = [self.data_directory] + url.split('/')
+        filepath = os.path.join(*path)
+        if filepath.endswith('/'):
+            ensure_dir(filepath)
+            return
+        ensure_dir(filepath)
+        f = open(filepath, 'w')
+        f.write(content)
+        f.close()
    
 # example
 if __name__ == "__main__":
     sp = Scraper("http://www.microsoft.com", exclude=["/dont/not/want/"])
     print sp.scrap()
-
