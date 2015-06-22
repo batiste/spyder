@@ -30,7 +30,7 @@ def node_is(node, name):
 
 class Scraper(object):
 
-    def __init__(self, uri, exclude=[], data_directory='data'):
+    def __init__(self, uri, exclude=[], data_directory='data', scrap_assets=False):
         self.uri = uri
         self.domain = urlparse.urlparse(uri)[1]
         self.http_root = "http://%s" % self.domain
@@ -40,13 +40,18 @@ class Scraper(object):
         self.html_urls = []
         self.data_directory = data_directory
         self.exclude = exclude
+        self.scrap_assets = scrap_assets
 
     def get_absolute_url(self, current_url, node):
 
-        if current_url.startswith("/"):
+        while current_url.startswith("//"):
             current_url = current_url[1:]
 
-        href = node.attributes.get('href', None)
+        for name in ['href', 'src']:
+            href = node.attributes.get(name, None)
+            if href is not None:
+                break
+
         if href is None:
             return
             
@@ -105,8 +110,10 @@ class Scraper(object):
         total = self.http_root + url
         if not url.startswith('/'):
             self.error("Invalid URL %s on ?" % total)
+            #import pdb
+            #pdb.set_trace()
         try:
-            fh = urllib2.urlopen(total, None, 5)
+            fh = urllib2.urlopen(total, timeout=20)
             content_type = fh.info()['content-type']
             content = fh.read()
 
@@ -139,12 +146,13 @@ class Scraper(object):
         else:
             return self.new_content(url, content_type, content)
 
+        parse_result = urlparse.urlparse(url)
+
         from html5lib import treebuilders
         parser = html5lib.HTMLParser(tree=treebuilders.getTreeBuilder("dom"))
         dom_tree = parser.parse(content)
         for node in walk(dom_tree):
-            if node.nodeType == 1 and node.nodeName == 'a':
-                parse_result = urlparse.urlparse(url)
+            if node.nodeType == 1 and (node.nodeName == 'a' or self.scrap_assets):
                 href = self.get_absolute_url(parse_result.path, node)
                 query = urlparse.parse_qs(parse_result.query)
                 if href:
@@ -181,7 +189,9 @@ class Scraper(object):
         if filepath.endswith('/'):
             ensure_dir(filepath)
             return
-        ensure_dir(filepath)
+        path = [self.data_directory] + url.split('/')[:-1]
+        parent_filepath = os.path.join(*path)
+        ensure_dir(parent_filepath)
         f = open(filepath, 'w')
         f.write(content)
         f.close()
