@@ -7,6 +7,7 @@ import pdb
 from bs4 import BeautifulSoup
 from termcolor import colored
 import os
+import re
 
 def ensure_dir(path):
     if not os.path.exists(path):
@@ -75,10 +76,8 @@ class Scraper(object):
         if "://" in href:
             return None
 
-        if href.startswith("mailto:"):
-            return None
-
-        if href.startswith("javascript:"):
+        # mailto:, javascript:, tel:, etc.
+        if re.match(r'^[a-z]+\:', href):
             return None
 
         # relative urls
