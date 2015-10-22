@@ -120,6 +120,34 @@ class Scraper(object):
 
         return content_type, content
 
+    def find_links(self, soup):
+        return soup.find_all(True)
+
+    def process_link(self, link, parse_result):
+
+        href = None
+        for name in ['href', 'src']:
+            if name in link.attrs: 
+                href = link.attrs[name]
+                break
+
+        if href is None:
+            return
+
+        if self.scrap_if_asset(href):
+            return
+
+        href = self.get_absolute_url(parse_result.path, href)
+        query = urlparse.parse_qs(parse_result.query)
+
+        if href:
+            href = self.cleanup_href(href)
+            if href not in self.all_urls:
+                self.all_urls.append(href)
+                #if query:
+                #    print('Query string', query)
+                self.urls_to_visit.append(href)
+
     def scrap_page(self, url):
         if url in self.visited_urls:
             return
@@ -147,41 +175,20 @@ class Scraper(object):
             return self.new_content(url, content_type, content)
 
         parse_result = urlparse.urlparse(url)
-        soup = BeautifulSoup(content)
+        soup = BeautifulSoup(content, "html.parser")
 
-        def scarp_if_asset(href):
-            if not self.assets_domain:
-                return False
-            if href in self.assets_urls:
-                return True
-            if href.startswith(self.assets_domain):
-                self.assets_urls.append(href)
-                self.scrap_asset(href)
-                return True
+        for link in self.find_links(soup):
+            self.process_link(link, parse_result)
 
-        for link in soup.find_all(True):
-
-            href = None
-            for name in ['href', 'src']:
-                if name in link.attrs: 
-                    href = link.attrs[name]
-                    break
-
-            if href is None:
-                continue
-
-            if scarp_if_asset(href):
-                continue
-
-            href = self.get_absolute_url(parse_result.path, link.attrs[name])
-            query = urlparse.parse_qs(parse_result.query)
-            if href:
-                href = self.cleanup_href(href)
-                if href not in self.all_urls:
-                    self.all_urls.append(href)
-                    #if query:
-                    #    print('Query string', query)
-                    self.urls_to_visit.append(href)
+    def scrap_if_asset(self, href):
+        if not self.assets_domain:
+            return False
+        if href in self.assets_urls:
+            return True
+        if href.startswith(self.assets_domain):
+            self.assets_urls.append(href)
+            self.scrap_asset(href)
+            return True
 
     def scrap(self, start='/'):
         print(colored('Start scrapping domain '+self.domain, 'green'))
